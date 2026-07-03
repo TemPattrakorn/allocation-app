@@ -1,4 +1,4 @@
-import { useAllocationStore } from '../store/useAllocationStore';
+import { useAllocationStore } from '@/store/useAllocationStore';
 import {
   Table,
   TableBody,
@@ -6,10 +6,10 @@ import {
   TableHead,
   TableHeader,
   TableRow,
-} from './ui/table';
-import { Input } from './ui/input';
-import { Badge } from './ui/badge';
-import type { OrderPriority } from '../types';
+} from '@/components/ui/table';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import type { OrderPriority } from '@/types';
 
 export function OrderTable() {
   const { orders, updateAllocation } = useAllocationStore();

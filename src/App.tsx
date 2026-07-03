@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { useAllocationStore } from './store/useAllocationStore';
-import { OrderTable } from './components/OrderTable';
-import { Button } from './components/ui/button';
+import { useAllocationStore } from '@/store/useAllocationStore';
+import { OrderTable } from '@/components/OrderTable';
+import { Button } from '@/components/ui/button';
 
 function App() {
   const { runAutoAssign, orders } = useAllocationStore();
