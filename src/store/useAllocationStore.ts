@@ -37,12 +37,20 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
             ),
     })),
 
+    // --- Update in src/store/useAllocationStore.ts ---
     resetAllocations: () =>
-        set({
-            orders: mockOrders,
-            inventory: mockInventory,
-            customers: mockCustomers,
-        }),
+        set((state) => ({
+            orders: state.orders.map(order => ({
+            ...order,
+            allocatedQuantity: 0,
+            // Reset to original status or specific initial IDs if needed
+            warehouseId: mockOrders.find(o => o.id === order.id)?.warehouseId || order.warehouseId,
+            supplierId: mockOrders.find(o => o.id === order.id)?.supplierId || order.supplierId,
+        })),
+        // Keep customers and inventory at baseline
+        inventory: mockInventory,
+        customers: mockCustomers,
+    })),
 
     runAutoAssign: () =>
     set(() => {

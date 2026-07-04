@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, PieChart, XCircle, Info, ChevronDown, ChevronRight, Save, X } from 'lucide-react';
+import { CheckCircle2, PieChart, XCircle, ChevronDown, ChevronRight, Save, X } from 'lucide-react';
 import { mockPricingRules, mockPriceTiers } from '@/data/mockData';
 import { bankersRound } from '@/utils/rounding';
 import type { OrderPriority } from '@/types';
@@ -15,25 +15,18 @@ import type { OrderPriority } from '@/types';
 function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => void }) {
   const { orders, customers, inventory, updateManualAllocation } = useAllocationStore();
   
-  // -- State Management --
-  // We allow draftQty to be an empty string ('') so users can backspace freely. 
   const [draftQty, setDraftQty] = useState<number | ''>(order.allocatedQuantity);
   const [draftSource, setDraftSource] = useState(`${order.warehouseId}|${order.supplierId}`);
   const [draftWH, draftSP] = draftSource.split('|');
 
-  // Fallback to 0 safely behind the scenes for all mathematical calculations
   const numericQty = draftQty === '' ? 0 : draftQty;
-
-  // Retrieve all valid location/vendor combinations that stock the requested item
   const validSources = inventory.filter(i => i.itemId === order.itemId);
 
-  // --- 1. Live Stock Constraints ---
   const selectedInventoryRecord = inventory.find(
     i => i.itemId === order.itemId && i.warehouseId === draftWH && i.supplierId === draftSP
   );
   const maxStockAtSource = selectedInventoryRecord?.stock || 0;
 
-  // Calculate inventory already consumed by other orders pulling from this exact source
   const stockUsedByOtherOrders = orders
     .filter(o => o.itemId === order.itemId && o.warehouseId === draftWH && o.supplierId === draftSP && o.id !== order.id)
     .reduce((sum, o) => sum + o.allocatedQuantity, 0);
@@ -41,20 +34,16 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
   const availableStockForThisOrder = maxStockAtSource - stockUsedByOtherOrders;
   const isStockExceeded = numericQty > availableStockForThisOrder;
 
-  // --- 2. Pricing & Rounding Logic ---
   const rule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === draftSP);
   const basePrice = rule?.basePrice || 0;
   const multiplier = mockPriceTiers[order.type as OrderPriority].multiplier;
   
-  // Apply Banker's Rounding (round-half-to-even) strictly to 2 decimal places
   const unitPrice = bankersRound(basePrice * multiplier);
   const draftLineTotal = bankersRound(unitPrice * numericQty);
 
-  // --- 3. Live Credit Constraints ---
   const customer = customers.find(c => c.id === order.customerId);
   const totalCreditLimit = customer?.availableCredit || 0;
 
-  // Re-calculate the total line costs of all other orders for this specific customer
   const spentByOtherOrders = orders
     .filter(o => o.customerId === order.customerId && o.id !== order.id)
     .reduce((sum, o) => {
@@ -64,12 +53,9 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
       return sum + (oPrice * o.allocatedQuantity);
     }, 0);
 
-  // Remaining credit = Total Pool - What others used - What this current edit will use
   const liveRemainingCredit = totalCreditLimit - spentByOtherOrders - draftLineTotal;
   const isCreditExceeded = liveRemainingCredit < 0;
 
-  // --- 4. Final Blocking Checks ---
-  // The save button is disabled if any hard constraints are violated
   const isBlocked = isStockExceeded || isCreditExceeded || numericQty > order.requestQuantity;
 
   const handleSave = () => {
@@ -80,8 +66,6 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
 
   return (
     <div className="p-4 bg-slate-100 border-x border-b shadow-inner grid grid-cols-1 md:grid-cols-3 gap-6 rounded-b-md">
-      
-      {/* Column 1: Source & Quantity Override */}
       <div className="space-y-4">
         <div>
           <label className="text-xs font-semibold text-slate-500 uppercase">Override Source (Live Stock)</label>
@@ -124,7 +108,6 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
         </div>
       </div>
 
-      {/* Column 2: Pricing Logic Breakdown */}
       <div className="bg-white p-3 rounded border border-slate-200 space-y-2">
         <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Price Breakdown</p>
         <div className="flex justify-between text-sm">
@@ -140,12 +123,11 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
           <span>฿{unitPrice.toFixed(2)}</span>
         </div>
         <div className="flex justify-between text-sm text-slate-500 mt-2">
-          <span>Line Total (Banker's Rounded):</span>
+          <span>Order Total:</span>
           <span className="font-mono">฿{draftLineTotal.toFixed(2)}</span>
         </div>
       </div>
 
-      {/* Column 3: Explicit Credit Validations */}
       <div className="flex flex-col justify-between">
         <div className="bg-white p-3 rounded border border-slate-200 space-y-2">
           <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Live Credit Validation</p>
@@ -169,7 +151,6 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
           </div>
         </div>
         
-        {/* Action Controls */}
         <div className="flex justify-end gap-2 mt-4">
           <Button variant="outline" onClick={onClose}><X className="w-4 h-4 mr-1"/> Cancel</Button>
           <Button onClick={handleSave} disabled={isBlocked} className="bg-slate-900 text-white">
@@ -201,10 +182,6 @@ export function OrderTable() {
   return (
     <TooltipProvider>
       <div className="rounded-md border bg-white shadow-sm overflow-x-auto">
-        <div className="p-4 bg-slate-50 border-b flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-          <Info className="w-4 h-4" />
-          Priority Sort: Emergency &gt; Overdue &gt; Daily (FIFO) | Click row to edit
-        </div>
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50/50 whitespace-nowrap">

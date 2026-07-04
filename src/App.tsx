@@ -5,7 +5,8 @@ import { Button } from '@/components/ui/button';
 import { mockInventory } from '@/data/mockData';
 
 function App() {
-  const { runAutoAssign, orders } = useAllocationStore();
+  // Pull resetAllocations from the store
+  const { runAutoAssign, resetAllocations, orders } = useAllocationStore();
 
   useEffect(() => {
     runAutoAssign();
@@ -30,7 +31,8 @@ function App() {
             <p className="text-slate-500 text-sm mt-1">Live fulfillment capacity and queue management.</p>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" onClick={() => window.location.reload()}>Reset State</Button>
+            {/* Updated Button to call the store action instead of reloading */}
+            <Button variant="outline" onClick={resetAllocations}>Clear Allocations</Button>
             <Button onClick={runAutoAssign} className="bg-slate-900 text-white hover:bg-slate-800">
               Run Auto-Allocation
             </Button>
