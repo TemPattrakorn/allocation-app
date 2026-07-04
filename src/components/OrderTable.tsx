@@ -45,7 +45,6 @@ export function OrderTable() {
             {orders.map((order) => {
               const liveCredit = getLiveRemainingCredit(order.customerId);
               const customer = customers.find(c => c.id === order.customerId);
-              const creditPercent = customer ? Math.max(0, (liveCredit / customer.availableCredit) * 100) : 0;
               
               const totalAllocatedUnits = order.allocations.reduce((sum, a) => sum + a.quantity, 0);
 
