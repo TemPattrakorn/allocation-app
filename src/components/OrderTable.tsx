@@ -1,41 +1,156 @@
+import React from 'react';
+import { useState } from 'react';
 import { useAllocationStore } from '@/store/useAllocationStore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Button } from '@/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, PieChart, XCircle, Info } from 'lucide-react';
+import { CheckCircle2, PieChart, XCircle, Info, ChevronDown, ChevronRight, Save, X } from 'lucide-react';
 import { mockPricingRules, mockPriceTiers } from '@/data/mockData';
 import { bankersRound } from '@/utils/rounding';
 import type { OrderPriority } from '@/types';
 
+// --- SUB-COMPONENT: ZONE C (DETAIL PANEL) ---
+function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => void }) {
+  const { inventory, getLiveRemainingStock, getLiveRemainingCredit, updateManualAllocation } = useAllocationStore();
+  
+  // Local draft state for real-time validation
+  const [draftQty, setDraftQty] = useState(order.allocatedQuantity);
+  const [draftSource, setDraftSource] = useState(`${order.warehouseId}|${order.supplierId}`);
+
+  const [draftWH, draftSP] = draftSource.split('|');
+
+  // Find all valid sources for this item
+  const validSources = inventory.filter(i => i.itemId === order.itemId);
+
+  // --- Real-Time Validation Math ---
+  
+  // 1. Live Stock: Add back current allocation IF they haven't changed the source
+  const isSameSource = order.warehouseId === draftWH && order.supplierId === draftSP;
+  const baseAvailableStock = getLiveRemainingStock(order.itemId, draftWH, draftSP) + (isSameSource ? order.allocatedQuantity : 0);
+  const isStockExceeded = draftQty > baseAvailableStock;
+
+  // 2. Live Pricing Breakdown
+  const rule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === draftSP);
+  const basePrice = rule?.basePrice || 0;
+  const multiplier = mockPriceTiers[order.type as OrderPriority].multiplier;
+  const unitPrice = bankersRound(basePrice * multiplier);
+  const draftLineTotal = bankersRound(unitPrice * draftQty);
+
+  // 3. Live Credit: Refund their current allocation cost, subtract the new draft cost
+  const oldRule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === order.supplierId);
+  const oldUnitPrice = bankersRound((oldRule?.basePrice || 0) * multiplier);
+  const currentlySpentOnThis = order.allocatedQuantity * oldUnitPrice;
+  
+  const baselineCredit = getLiveRemainingCredit(order.customerId) + currentlySpentOnThis;
+  const liveRemainingCredit = baselineCredit - draftLineTotal;
+  const isCreditExceeded = liveRemainingCredit < 0;
+
+  // Final Blocking Logic
+  const isBlocked = isStockExceeded || isCreditExceeded || draftQty > order.requestQuantity;
+
+  const handleSave = () => {
+    if (isBlocked) return;
+    updateManualAllocation(order.id, draftQty, draftWH, draftSP);
+    onClose();
+  };
+
+  return (
+    <div className="p-4 bg-slate-100 border-x border-b shadow-inner grid grid-cols-3 gap-6 rounded-b-md">
+      {/* Column 1: Source & Qty */}
+      <div className="space-y-4">
+        <div>
+          <label className="text-xs font-semibold text-slate-500 uppercase">Override Source (Live Stock)</label>
+          <select 
+            className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm"
+            value={draftSource}
+            onChange={(e) => setDraftSource(e.target.value)}
+          >
+            {validSources.map(src => {
+              const stock = getLiveRemainingStock(src.itemId, src.warehouseId, src.supplierId) + (src.warehouseId === order.warehouseId && src.supplierId === order.supplierId ? order.allocatedQuantity : 0);
+              return (
+                <option key={`${src.warehouseId}|${src.supplierId}`} value={`${src.warehouseId}|${src.supplierId}`}>
+                  {src.warehouseId} / {src.supplierId} — {stock} avail
+                </option>
+              );
+            })}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-slate-500 uppercase flex justify-between">
+            Allocate Quantity
+            <span className="text-slate-400">Max Req: {order.requestQuantity}</span>
+          </label>
+          <Input 
+            type="number" 
+            min={0} max={order.requestQuantity}
+            value={draftQty}
+            onChange={(e) => setDraftQty(parseInt(e.target.value) || 0)}
+            className={`mt-1 font-mono ${isStockExceeded ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+          />
+          {isStockExceeded && <p className="text-xs text-red-600 mt-1 font-semibold">Exceeds available stock!</p>}
+          {draftQty > order.requestQuantity && <p className="text-xs text-red-600 mt-1 font-semibold">Cannot exceed requested qty.</p>}
+        </div>
+      </div>
+
+      {/* Column 2: Pricing Breakdown */}
+      <div className="bg-white p-3 rounded border border-slate-200 space-y-2">
+        <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Price Breakdown</p>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-500">Base Price:</span>
+          <span>฿{basePrice.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-sm">
+          <span className="text-slate-500">Tier Adjust ({multiplier * 100}%):</span>
+          <span>{multiplier > 1 ? '+' : '-'} ฿{Math.abs(basePrice - (basePrice * multiplier)).toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-sm font-bold border-t pt-1">
+          <span>Final Unit Price:</span>
+          <span>฿{unitPrice.toFixed(2)}</span>
+        </div>
+        <div className="flex justify-between text-sm text-slate-500 mt-2">
+          <span>Line Total (Banker's Rounded):</span>
+          <span className="font-mono">฿{draftLineTotal.toFixed(2)}</span>
+        </div>
+      </div>
+
+      {/* Column 3: Credit limits & Actions */}
+      <div className="flex flex-col justify-between">
+        <div className="space-y-1">
+          <p className="text-xs font-semibold text-slate-500 uppercase">Live Credit Validation</p>
+          <p className={`text-xl font-bold font-mono tracking-tight ${isCreditExceeded ? 'text-red-600' : 'text-emerald-600'}`}>
+            ฿{liveRemainingCredit.toFixed(2)}
+          </p>
+          <p className="text-xs text-slate-500">Available after allocation</p>
+          {isCreditExceeded && <p className="text-xs text-red-600 font-semibold mt-1">Allocation blocked: Negative credit limit.</p>}
+        </div>
+        <div className="flex justify-end gap-2 mt-4">
+          <Button variant="outline" onClick={onClose}><X className="w-4 h-4 mr-1"/> Cancel</Button>
+          <Button onClick={handleSave} disabled={isBlocked} className="bg-slate-900 text-white">
+            <Save className="w-4 h-4 mr-1"/> Save Changes
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// --- MAIN TABLE ---
 export function OrderTable() {
-  const { 
-    orders, 
-    customers, 
-    updateAllocation, 
-    getLiveRemainingStock, 
-    getLiveRemainingCredit 
-  } = useAllocationStore();
+  const { orders, customers, getLiveRemainingStock, getLiveRemainingCredit } = useAllocationStore();
+  const [expandedRow, setExpandedRow] = useState<string | null>(null);
+
+  const toggleRow = (orderId: string) => {
+    setExpandedRow(prev => prev === orderId ? null : orderId);
+  };
 
   const getPriorityBadge = (type: OrderPriority) => {
     switch (type) {
-      case 'EMERGENCY': return 'destructive'; // Red
-      case 'OVER_DUE': return 'secondary';    // Orange/Gray
-      default: return 'outline';              // Transparent/Daily
-    }
-  };
-
-  const handleManualEdit = (order: any, value: string) => {
-    const newQty = parseInt(value, 10) || 0;
-    if (newQty < 0) return;
-
-    const diff = newQty - order.allocatedQuantity;
-    const availableStock = getLiveRemainingStock(order.itemId, order.warehouseId, order.supplierId);
-    
-    // Check if the user is trying to allocate more than allowed
-    if (newQty <= order.requestQuantity && diff <= availableStock) {
-      updateAllocation(order.id, newQty);
+      case 'EMERGENCY': return 'destructive';
+      case 'OVER_DUE': return 'secondary';
+      default: return 'outline';
     }
   };
 
@@ -44,126 +159,83 @@ export function OrderTable() {
       <div className="rounded-md border bg-white shadow-sm overflow-x-auto">
         <div className="p-4 bg-slate-50 border-b flex items-center gap-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
           <Info className="w-4 h-4" />
-          Priority Sort: Emergency &gt; Overdue &gt; Daily (FIFO)
+          Priority Sort: Emergency &gt; Overdue &gt; Daily (FIFO) | Click row to edit
         </div>
         <Table>
           <TableHeader>
             <TableRow className="bg-slate-50/50 whitespace-nowrap">
+              <TableHead className="w-[40px]"></TableHead>
               <TableHead>Order ID</TableHead>
-              <TableHead>Customer / Credit</TableHead>
+              <TableHead>Customer</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Date</TableHead>
               <TableHead>Source (WH/SP)</TableHead>
               <TableHead className="text-right">Unit Price</TableHead>
               <TableHead className="text-right">Req.</TableHead>
-              <TableHead className="text-right w-[120px]">Allocated</TableHead>
-              <TableHead className="text-right">Line Total</TableHead>
+              <TableHead className="text-right">Allocated</TableHead>
               <TableHead className="text-center">Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {orders.map((order) => {
-              // --- Real-time Calculations ---
-              const liveStock = getLiveRemainingStock(order.itemId, order.warehouseId, order.supplierId);
               const liveCredit = getLiveRemainingCredit(order.customerId);
               const customer = customers.find(c => c.id === order.customerId);
               
-              // Pricing Math (Banker's Rounding)
               const rule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === order.supplierId);
               const multiplier = mockPriceTiers[order.type].multiplier;
               const unitPrice = rule ? bankersRound(rule.basePrice * multiplier) : 0;
-              const lineTotal = bankersRound(unitPrice * order.allocatedQuantity);
-              
-              // Credit Gauge Math
               const creditPercent = customer ? Math.max(0, (liveCredit / customer.availableCredit) * 100) : 0;
               
-              // Status & Block Reason Logic
               const isFull = order.allocatedQuantity === order.requestQuantity;
               const isPartial = order.allocatedQuantity > 0 && order.allocatedQuantity < order.requestQuantity;
               const isBlocked = order.allocatedQuantity === 0;
-              
-              let blockReason = "";
-              if (!isFull) {
-                if (liveStock <= 0) blockReason = `Stock exhausted at ${order.warehouseId}/${order.supplierId}`;
-                else if (unitPrice > 0 && liveCredit < unitPrice) blockReason = `Credit limit reached. Available: ฿${liveCredit.toFixed(2)}`;
-              }
 
               return (
-                <TableRow key={order.id} className="hover:bg-slate-50 transition-colors">
-                  <TableCell className="font-medium text-slate-900">{order.id}</TableCell>
-                  
-                  {/* Customer & Mini-Gauge */}
-                  <TableCell>
-                    <div className="flex flex-col gap-1 w-24">
-                      <span className="text-xs font-semibold">{order.customerId}</span>
-                      <Progress value={creditPercent} className="h-1.5" />
-                    </div>
-                  </TableCell>
+                <React.Fragment key={order.id}>
+                  {/* READ-ONLY SUMMARY ROW */}
+                  <TableRow 
+                    className={`cursor-pointer transition-colors ${expandedRow === order.id ? 'bg-blue-50/50 hover:bg-blue-50/50' : 'hover:bg-slate-50'}`}
+                    onClick={() => toggleRow(order.id)}
+                  >
+                    <TableCell>
+                      {expandedRow === order.id ? <ChevronDown className="w-4 h-4 text-slate-500" /> : <ChevronRight className="w-4 h-4 text-slate-400" />}
+                    </TableCell>
+                    <TableCell className="font-medium text-slate-900">{order.id}</TableCell>
+                    
+                    <TableCell>
+                      <div className="flex flex-col gap-1 w-24">
+                        <span className="text-xs font-semibold">{order.customerId}</span>
+                        <Progress value={creditPercent} className="h-1.5" />
+                      </div>
+                    </TableCell>
 
-                  <TableCell>
-                    <Badge variant={getPriorityBadge(order.type)}>{order.type}</Badge>
-                  </TableCell>
-                  
-                  <TableCell className="text-xs text-slate-500">
-                    {new Date(order.createDate).toLocaleDateString()}
-                  </TableCell>
-                  
-                  <TableCell className="text-slate-500 font-mono text-xs whitespace-nowrap">
-                    {order.warehouseId} / {order.supplierId}
-                  </TableCell>
+                    <TableCell><Badge variant={getPriorityBadge(order.type)}>{order.type}</Badge></TableCell>
+                    <TableCell className="text-xs text-slate-500">{new Date(order.createDate).toLocaleDateString()}</TableCell>
+                    <TableCell className="text-slate-500 font-mono text-xs whitespace-nowrap">{order.warehouseId} / {order.supplierId}</TableCell>
+                    <TableCell className="text-right font-mono text-xs">฿{unitPrice.toFixed(2)}</TableCell>
+                    <TableCell className="text-right font-medium">{order.requestQuantity}</TableCell>
+                    
+                    {/* Read-Only Allocated Qty */}
+                    <TableCell className="text-right font-mono font-bold text-slate-700">
+                      {order.allocatedQuantity}
+                    </TableCell>
 
-                  <TableCell className="text-right font-mono text-xs">
-                    ฿{unitPrice.toFixed(2)}
-                  </TableCell>
+                    <TableCell className="text-center">
+                      {isFull && <Badge className="bg-emerald-100 text-emerald-800 border-none shadow-none"><CheckCircle2 className="w-3 h-3 mr-1" /> Full</Badge>}
+                      {isPartial && <Badge variant="secondary" className="bg-amber-100 text-amber-800"><PieChart className="w-3 h-3 mr-1" /> Partial</Badge>}
+                      {isBlocked && <Badge variant="destructive"><XCircle className="w-3 h-3 mr-1" /> Blocked</Badge>}
+                    </TableCell>
+                  </TableRow>
 
-                  <TableCell className="text-right font-medium">{order.requestQuantity}</TableCell>
-                  
-                  <TableCell className="text-right">
-                    <Input
-                      type="number"
-                      min={0}
-                      max={order.requestQuantity}
-                      value={order.allocatedQuantity || ''}
-                      onChange={(e) => handleManualEdit(order, e.target.value)}
-                      className={`h-8 w-20 ml-auto text-right font-mono ${blockReason.includes('Stock') ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-                    />
-                  </TableCell>
-
-                  <TableCell className="text-right font-mono text-sm font-semibold">
-                    ฿{lineTotal.toFixed(2)}
-                  </TableCell>
-
-                  {/* Status Badge with Tooltip for Blocks */}
-                  <TableCell className="text-center">
-                    {isFull && (
-                      <Badge className="bg-emerald-100 text-emerald-800 hover:bg-emerald-100 border-none shadow-none gap-1">
-                        <CheckCircle2 className="w-3 h-3" /> Full
-                      </Badge>
-                    )}
-                    {isPartial && (
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-100 gap-1 cursor-help">
-                            <PieChart className="w-3 h-3" /> Partial
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent><p>{blockReason}</p></TooltipContent>
-                      </Tooltip>
-                    )}
-                    {isBlocked && (
-                      <Tooltip>
-                        <TooltipTrigger>
-                          <Badge variant="destructive" className="gap-1 cursor-help">
-                            <XCircle className="w-3 h-3" /> Blocked
-                          </Badge>
-                        </TooltipTrigger>
-                        <TooltipContent className="bg-red-900 text-white border-none">
-                          <p className="font-semibold">{blockReason}</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    )}
-                  </TableCell>
-                </TableRow>
+                  {/* EXPANDABLE DETAIL PANEL (ZONE C) */}
+                  {expandedRow === order.id && (
+                    <TableRow className="hover:bg-transparent border-none">
+                      <TableCell colSpan={10} className="p-0 border-none">
+                        <AllocationDetailPanel order={order} onClose={() => setExpandedRow(null)} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </React.Fragment>
               );
             })}
           </TableBody>

@@ -12,6 +12,7 @@ interface AllocationState {
     runAutoAssign: () => void;
     getLiveRemainingStock: (itemId: string, warehouseId: string, supplierId: string) => number;
     getLiveRemainingCredit: (customerId: string) => number;
+    updateManualAllocation: (orderId: string, allocatedQty: number, warehouseId: string, supplierId: string) => void;
 }
 
 // FIX 1: Added 'get' to the parameters here
@@ -24,6 +25,15 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
         set((state) => ({
             orders: state.orders.map((order) =>
             order.id === orderId ? { ...order, allocatedQuantity: allocatedQty } : order
+        ),
+    })),
+
+    updateManualAllocation: (orderId, allocatedQty, warehouseId, supplierId) =>
+    set((state) => ({
+        orders: state.orders.map((order) =>
+        order.id === orderId 
+            ? { ...order, allocatedQuantity: allocatedQty, warehouseId, supplierId } 
+            : order
         ),
     })),
 
@@ -159,5 +169,7 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
         }, 0);
       
     return baseCredit - currentlySpent;
+
+    
   },
 }));
