@@ -101,7 +101,7 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
               const val = e.target.value;
               setDraftQty(val === '' ? '' : parseInt(val, 10));
             }}
-            className={`mt-1 font-mono ${isStockExceeded ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+            className={`mt-1 bg-white font-mono ${isStockExceeded ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
           />
           {isStockExceeded && <p className="text-xs text-red-600 mt-1 font-semibold">Exceeds available stock ({availableStockForThisOrder} max)</p>}
           {numericQty > order.requestQuantity && <p className="text-xs text-red-600 mt-1 font-semibold">Cannot exceed requested qty.</p>}
@@ -140,7 +140,7 @@ function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => 
             <span className="text-slate-700">- ฿{spentByOtherOrders.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Used by THIS Order:</span>
+            <span className="text-slate-500">Used by This Order:</span>
             <span className="text-red-500 font-bold">- ฿{draftLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between text-sm font-bold border-t pt-1">
