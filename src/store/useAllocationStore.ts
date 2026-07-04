@@ -28,7 +28,6 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
 
   resetAllocations: () =>
     set((state) => ({
-      // FIX: Tell TS this empty array is meant for AllocationRecords
       orders: state.orders.map(order => ({ ...order, allocations: [] as AllocationRecord[] })),
       inventory: mockInventory,
       customers: mockCustomers,
@@ -36,13 +35,12 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
 
   runAutoAssign: () =>
     set(() => {
-      // FIX: Tell TS the draft array is meant for AllocationRecords and SubOrders
       let draftOrders: SubOrder[] = mockOrders.map((o) => ({ ...o, allocations: [] as AllocationRecord[] }));
       
       let trackingInventory = mockInventory.map((i) => ({ ...i }));
       let trackingCustomers = mockCustomers.map((c) => ({ ...c }));
 
-      // 1. Sort by Priority & Date
+      // 1. Sort Orders by Priority & Date
       const priorityWeight = { EMERGENCY: 3, OVER_DUE: 2, DAILY: 1 };
       draftOrders.sort((a, b) => {
         if (priorityWeight[a.type] !== priorityWeight[b.type]) {
@@ -64,21 +62,30 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
           return matchW && matchS;
         });
 
-        // SORTING STRATEGY: Cheapest base price first (to stretch customer credit), then highest stock
+        // Get the specific multiplier for this order's type to calculate true final cost
+        const multiplier = mockPriceTiers[order.type].multiplier;
+
+        // NEW SORTING STRATEGY: Highest stock first. If tied, cheapest final price first.
         validSources.sort((a, b) => {
+          // Rule 1: Prioritize highest stock
+          if (b.stock !== a.stock) {
+            return b.stock - a.stock; 
+          }
+          
+          // Rule 2: Tie-breaker - cheapest final price based on order type
           const ruleA = mockPricingRules.find(p => p.itemId === a.itemId && p.supplierId === a.supplierId);
           const ruleB = mockPricingRules.find(p => p.itemId === b.itemId && p.supplierId === b.supplierId);
-          const priceA = ruleA?.basePrice || Infinity;
-          const priceB = ruleB?.basePrice || Infinity;
           
-          if (priceA !== priceB) return priceA - priceB;
-          return b.stock - a.stock;
+          const finalPriceA = ruleA ? bankersRound(ruleA.basePrice * multiplier) : Infinity;
+          const finalPriceB = ruleB ? bankersRound(ruleB.basePrice * multiplier) : Infinity;
+          
+          return finalPriceA - finalPriceB;
         });
 
         const custIndex = trackingCustomers.findIndex((c) => c.id === order.customerId);
         if (custIndex === -1) return order;
 
-        // Greedy consumption loop
+        // Greedy consumption loop (Automatically falls back to next source when one runs out)
         for (const source of validSources) {
           if (remainingToFulfill <= 0) break; // Order fulfilled!
 
@@ -89,7 +96,6 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
           const rule = mockPricingRules.find((p) => p.itemId === order.itemId && p.supplierId === source.supplierId);
           if (!rule) continue;
 
-          const multiplier = mockPriceTiers[order.type].multiplier;
           const finalUnitPrice = bankersRound(rule.basePrice * multiplier);
 
           const maxQtyByStock = Math.min(remainingToFulfill, trackingInventory[invIndex].stock);
@@ -123,7 +129,6 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
       (i) => i.itemId === itemId && i.warehouseId === warehouseId && i.supplierId === supplierId
     )?.stock || 0;
 
-    // Sum all quantities from the new allocations arrays
     const currentlyAllocated = orders.reduce((total, o) => {
       if (o.itemId !== itemId) return total;
       
@@ -140,7 +145,6 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
     const { orders, customers } = get();
     const baseCredit = customers.find((c) => c.id === customerId)?.availableCredit || 0;
 
-    // Loop through every split record inside every order for this customer
     const currentlySpent = orders
       .filter((o) => o.customerId === customerId)
       .reduce((totalSpent, o) => {
