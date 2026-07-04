@@ -33,10 +33,10 @@ export const useAllocationStore = create<AllocationState>((set) => ({
 
   runAutoAssign: () =>
     set((state) => {
-      // 1. Create deep copies of the state to safely mutate during calculation
+      // 1. Create deep copies to safely mutate during calculation
       let draftOrders = [...state.orders];
-      let draftInventory = state.inventory.map((i) => ({ ...i }));
-      let draftCustomers = state.customers.map((c) => ({ ...c }));
+      let draftInventory = mockInventory.map((i) => ({ ...i }));
+      let draftCustomers = mockCustomers.map((c) => ({ ...c }));
 
       // 2. Sort Orders: EMERGENCY > OVER_DUE > DAILY, then by Create Date (FIFO)
       const priorityWeight = { EMERGENCY: 3, OVER_DUE: 2, DAILY: 1 };
