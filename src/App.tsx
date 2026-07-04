@@ -34,7 +34,7 @@ function App() {
             {/* Updated Button to call the store action instead of reloading */}
             <Button variant="outline" onClick={resetAllocations}>Clear Allocations</Button>
             <Button onClick={runAutoAssign} className="bg-slate-900 text-white hover:bg-slate-800">
-              Run Auto-Allocation
+              Auto-Allocation
             </Button>
           </div>
         </header>
