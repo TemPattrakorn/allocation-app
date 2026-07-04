@@ -1,75 +1,18 @@
-# React + TypeScript + Vite
+# Allocation Problem
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This is an interactive, frontend allocation interface built for processing customer salmon orders based on strict inventory, credit, and pricing constraints.
 
-Currently, two official plugins are available:
+## 🚀 Live Demo
+[View the Live Deployment Here](https://allocation-app-six.vercel.app/)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🛠️ Tech Stack
+* **Framework:** React + TypeScript (via Vite)
+* **Styling:** Tailwind CSS + shadcn/ui
+* **State Management:** Zustand
+* **Deployment:** Vercel
 
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-
-```
+## 🧠 Core Features
+* **Auto-Assignment Algorithm:** Automatically processes orders based on Priority (EMERGENCY > OVER_DUE > DAILY) and FIFO.
+* **Wildcard Resolution:** Dynamically routes `WH-000` and `SP-000` orders to the warehouse/supplier with the highest available stock.
+* **Banker's Rounding:** Strictly enforces financial rounding rules to 2 decimal places and rounds midpoint values (ending in exactly 5) to the nearest even number.
+* **Manual Override:** Users can manually adjust allocations via the data grid. Inputs are strictly validated against remaining stock and customer credit limits.
