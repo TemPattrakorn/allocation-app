@@ -4,37 +4,40 @@ import { mockOrders, mockInventory, mockCustomers, mockPricingRules, mockPriceTi
 import { bankersRound } from '../utils/rounding';
 
 interface AllocationState {
-  orders: SubOrder[];
-  inventory: Inventory[];
-  customers: Customer[];
-  updateAllocation: (orderId: string, allocatedQty: number) => void;
-  resetAllocations: () => void;
-  runAutoAssign: () => void;
+    orders: SubOrder[];
+    inventory: Inventory[];
+    customers: Customer[];
+    updateAllocation: (orderId: string, allocatedQty: number) => void;
+    resetAllocations: () => void;
+    runAutoAssign: () => void;
+    getLiveRemainingStock: (itemId: string, warehouseId: string, supplierId: string) => number;
+    getLiveRemainingCredit: (customerId: string) => number;
 }
 
-export const useAllocationStore = create<AllocationState>((set) => ({
-  orders: mockOrders,
-  inventory: mockInventory,
-  customers: mockCustomers,
+// FIX 1: Added 'get' to the parameters here
+export const useAllocationStore = create<AllocationState>((set, get) => ({
+    orders: mockOrders,
+    inventory: mockInventory,
+    customers: mockCustomers,
 
-  updateAllocation: (orderId, allocatedQty) =>
-    set((state) => ({
-      orders: state.orders.map((order) =>
-        order.id === orderId ? { ...order, allocatedQuantity: allocatedQty } : order
-      ),
+    updateAllocation: (orderId, allocatedQty) =>
+        set((state) => ({
+            orders: state.orders.map((order) =>
+            order.id === orderId ? { ...order, allocatedQuantity: allocatedQty } : order
+        ),
     })),
 
-  resetAllocations: () =>
-    set({
-      orders: mockOrders,
-      inventory: mockInventory,
-      customers: mockCustomers,
-    }),
+    resetAllocations: () =>
+        set({
+            orders: mockOrders,
+            inventory: mockInventory,
+            customers: mockCustomers,
+        }),
 
-  runAutoAssign: () =>
-    set((state) => {
-      // 1. Create deep copies to safely mutate during calculation
-      let draftOrders = [...state.orders];
+    runAutoAssign: () =>
+    set(() => {
+      // FIX 2: Pull draftOrders directly from mockOrders to reset Wildcards on every run
+      let draftOrders = mockOrders.map((o) => ({ ...o }));
       let draftInventory = mockInventory.map((i) => ({ ...i }));
       let draftCustomers = mockCustomers.map((c) => ({ ...c }));
 
@@ -126,4 +129,35 @@ export const useAllocationStore = create<AllocationState>((set) => ({
 
       return { orders: draftOrders, inventory: draftInventory, customers: draftCustomers };
     }),
+
+    getLiveRemainingStock: (itemId: string, warehouseId: string, supplierId: string) => {
+        // Now get() will work perfectly!
+        const { orders, inventory } = get();
+        const baseStock = inventory.find(
+            (i) => i.itemId === itemId && i.warehouseId === warehouseId && i.supplierId === supplierId
+        )?.stock || 0;
+    
+        const currentlyAllocated = orders
+        .filter((o) => o.itemId === itemId && o.warehouseId === warehouseId && o.supplierId === supplierId)
+        .reduce((sum, o) => sum + o.allocatedQuantity, 0);
+      
+        return baseStock - currentlyAllocated;
+    },
+
+    getLiveRemainingCredit: (customerId: string) => {
+        const { orders, customers } = get();
+        const baseCredit = customers.find((c) => c.id === customerId)?.availableCredit || 0;
+    
+        const currentlySpent = orders
+        .filter((o) => o.customerId === customerId)
+        .reduce((sum, o) => {
+        const rule = mockPricingRules.find((p) => p.itemId === o.itemId && p.supplierId === o.supplierId);
+        if (!rule) return sum;
+        const multiplier = mockPriceTiers[o.type].multiplier;
+        const price = bankersRound(rule.basePrice * multiplier);
+        return sum + (price * o.allocatedQuantity);
+        }, 0);
+      
+    return baseCredit - currentlySpent;
+  },
 }));
