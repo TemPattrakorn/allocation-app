@@ -15,10 +15,8 @@ import type { OrderPriority, AllocationRecord, SubOrder } from '@/types';
 function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: () => void }) {
   const { orders, customers, inventory, updateManualAllocation } = useAllocationStore();
 
-  // Find all locations that physically stock this requested item
   const validSources = inventory.filter(i => i.itemId === order.itemId);
 
-  // Initialize draft quantities mapping key ("WH|SP") to the currently allocated quantity
   const [draftQuantities, setDraftQuantities] = useState<Record<string, number | ''>>(() => {
     const initialMap: Record<string, number> = {};
     order.allocations.forEach(a => {
@@ -27,18 +25,15 @@ function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: (
     return initialMap;
   });
 
-  // Helper to read state value safely as a numeric 0 behind the scenes
   const getNumericQty = (key: string) => {
     const val = draftQuantities[key];
     return val === '' || val === undefined ? 0 : val;
   };
 
-  // --- 1. Total Allocated Across All Rows ---
   const totalDraftAllocated = validSources.reduce((sum, src) => {
     return sum + getNumericQty(`${src.warehouseId}|${src.supplierId}`);
   }, 0);
 
-  // --- 2. Live Pricing & Live Stock Rules Engine ---
   const multiplier = mockPriceTiers[order.type].multiplier;
   let runningLineTotal = 0;
   let sourceStockExceeded = false;
@@ -49,7 +44,6 @@ function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: (
     const key = `${src.warehouseId}|${src.supplierId}`;
     const draftQty = getNumericQty(key);
 
-    // Stock used by OTHER sub-orders matching this exact node
     const othersUsed = orders
       .filter(o => o.itemId === order.itemId && o.id !== order.id)
       .reduce((sum, o) => {
@@ -65,7 +59,6 @@ function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: (
       stockExceededTracker[key] = true;
     }
 
-    // Calculate item specific pricing for this node
     const rule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === src.supplierId);
     const basePrice = rule?.basePrice || 0;
     const unitPrice = bankersRound(basePrice * multiplier);
@@ -77,13 +70,13 @@ function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: (
       key,
       warehouseId: src.warehouseId,
       supplierId: src.supplierId,
+      basePrice, // Exporting basePrice for the UI
       unitPrice,
       availableStockAtSource,
       rowTotal
     };
   });
 
-  // --- 3. Live Credit Pool Matrix ---
   const customer = customers.find(c => c.id === order.customerId);
   const totalCreditLimit = customer?.availableCredit || 0;
 
@@ -103,14 +96,12 @@ function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: (
   const liveRemainingCredit = totalCreditLimit - spentByOtherOrders - runningLineTotal;
   const isCreditExceeded = liveRemainingCredit < 0;
 
-  // --- Hard Hard Boundary Guards ---
   const isRequestedExceeded = totalDraftAllocated > order.requestQuantity;
   const isBlocked = sourceStockExceeded || isCreditExceeded || isRequestedExceeded;
 
   const handleSave = () => {
     if (isBlocked) return;
 
-    // Convert the local dictionary back to an array of explicit active records
     const finalAllocations: AllocationRecord[] = Object.entries(draftQuantities)
       .filter(([_, qty]) => qty !== '' && qty > 0)
       .map(([key, qty]) => {
@@ -141,8 +132,12 @@ function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: (
                 <span className="font-semibold text-slate-700">{row.warehouseId} / {row.supplierId}</span>
                 <span className="text-xs text-slate-400">Available: {row.availableStockAtSource} units</span>
               </div>
-              <div className="col-span-3 text-right font-mono text-xs text-slate-500">
-                ฿{row.unitPrice.toFixed(2)} /u
+              {/* UPDATED: Unit Price Column with Base & Multiplier */}
+              <div className="col-span-3 flex flex-col items-end justify-center pr-2">
+                <span className="font-mono text-xs font-semibold text-slate-700">฿{row.unitPrice.toFixed(2)} /u</span>
+                <span className="font-mono text-[10px] text-slate-400 leading-tight mt-0.5">
+                  Base: ฿{row.basePrice.toFixed(2)} &times; {multiplier}
+                </span>
               </div>
               <div className="col-span-2">
                 <Input 
@@ -230,6 +225,7 @@ export function OrderTable() {
             <TableRow className="bg-slate-50/50 whitespace-nowrap">
               <TableHead className="w-[40px]"></TableHead>
               <TableHead>Order ID</TableHead>
+              <TableHead>Item</TableHead> 
               <TableHead>Customer</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Date</TableHead>
@@ -245,7 +241,6 @@ export function OrderTable() {
               const customer = customers.find(c => c.id === order.customerId);
               const creditPercent = customer ? Math.max(0, (liveCredit / customer.availableCredit) * 100) : 0;
               
-              // Count total units parsed into the allocations list
               const totalAllocatedUnits = order.allocations.reduce((sum, a) => sum + a.quantity, 0);
 
               const isFull = totalAllocatedUnits === order.requestQuantity;
@@ -264,6 +259,12 @@ export function OrderTable() {
                     <TableCell className="font-medium text-slate-900">{order.id}</TableCell>
                     
                     <TableCell>
+                      <span className="font-mono text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
+                        {order.itemId}
+                      </span>
+                    </TableCell>
+
+                    <TableCell>
                       <div className="flex flex-col gap-1 w-24">
                         <span className="text-xs font-semibold">{order.customerId}</span>
                         <Progress value={creditPercent} className="h-1.5" />
@@ -273,7 +274,6 @@ export function OrderTable() {
                     <TableCell><Badge variant={getPriorityBadge(order.type)}>{order.type}</Badge></TableCell>
                     <TableCell className="text-xs text-slate-500">{new Date(order.createDate).toLocaleDateString()}</TableCell>
                     
-                    {/* Render a quick compact list of the locations fulfilling this specific order */}
                     <TableCell className="text-xs text-slate-500 max-w-[200px] truncate">
                       {isBlocked ? (
                         <span className="text-slate-400 italic">None Assigned</span>
@@ -324,7 +324,7 @@ export function OrderTable() {
 
                   {expandedRow === order.id && (
                     <TableRow className="hover:bg-transparent border-none">
-                      <TableCell colSpan={9} className="p-0 border-none">
+                      <TableCell colSpan={10} className="p-0 border-none">
                         <AllocationDetailPanel order={order} onClose={() => setExpandedRow(null)} />
                       </TableCell>
                     </TableRow>
