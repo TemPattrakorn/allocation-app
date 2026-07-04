@@ -111,10 +111,10 @@ export function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onC
   return (
     <div className="p-4 bg-slate-100 border-x border-b shadow-inner grid grid-cols-1 lg:grid-cols-12 gap-6 rounded-b-md">
       
-      {/* Ledger Table: Columns 1 to 7 */}
+      {/* Allocation Table: Columns 1 to 7 */}
       <div className="lg:col-span-7 bg-white p-4 rounded border border-slate-200 space-y-3">
         <div className="flex justify-between items-center border-b pb-2">
-          <p className="text-xs font-bold text-slate-500 uppercase">Fulfillment Split Ledger</p>
+          <p className="text-xs font-bold text-slate-500 uppercase">Stock Allocation</p>
           <span className={`text-xs font-semibold ${isRequestedExceeded ? 'text-red-600' : 'text-slate-600'}`}>
             Total Allocated: {totalDraftAllocated} / {order.requestQuantity}
           </span>
@@ -160,32 +160,44 @@ export function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onC
 
       {/* Credit Pool & Actions Viewports: Columns 8 to 12 */}
       <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
-        <div className="bg-white p-3 rounded border border-slate-200 space-y-2">
-          <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Live Financial Exposure</p>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Total Credit Limit:</span>
-            <span>฿{totalCreditLimit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Other Orders Cost:</span>
-            <span className="text-slate-700">- ฿{spentByOtherOrders.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-          </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-slate-500">This Order Ledger Total:</span>
-            <span className="text-red-500 font-bold">- ฿{runningLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-          </div>
-          <div className="flex justify-between text-sm font-bold border-t pt-1">
-            <span>Remaining Runway:</span>
-            <span className={isCreditExceeded ? 'text-red-600' : 'text-emerald-600'}>
-              ฿{liveRemainingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-            </span>
+        
+        {/* NEW: Wrapper to keep Credit Summary and Remark grouped together */}
+        <div className="space-y-4">
+          {/* NEW: Remark Sticky Note */}
+          {order.remark && (
+            <div className="bg-white p-3 rounded border border-slate-200">
+              <p className="text-xs font-semibold text-slate-500 uppercase border-b border-slate-200 pb-1 mb-2">Order Remark</p>
+              <p className="text-sm text-slate-500">{order.remark}</p>
+            </div>
+          )}
+
+          <div className="bg-white p-3 rounded border border-slate-200 space-y-2">
+            <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Credit Summary</p>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Total Credit Limit:</span>
+              <span>฿{totalCreditLimit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">Other Orders Cost:</span>
+              <span className="text-slate-700">- ฿{spentByOtherOrders.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-slate-500">This Order Cost:</span>
+              <span className="text-red-500 font-bold">- ฿{runningLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+            </div>
+            <div className="flex justify-between text-sm font-bold border-t pt-1">
+              <span>Remaining Credit:</span>
+              <span className={isCreditExceeded ? 'text-red-600' : 'text-emerald-600'}>
+                ฿{liveRemainingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+              </span>
+            </div>
           </div>
         </div>
         
         <div className="flex justify-end gap-2">
           <Button variant="outline" size="sm" onClick={onClose}><X className="w-4 h-4 mr-1"/> Cancel</Button>
           <Button size="sm" onClick={handleSave} disabled={isBlocked} className="bg-slate-900 text-white">
-            <Save className="w-4 h-4 mr-1"/> Save Splits
+            <Save className="w-4 h-4 mr-1"/> Save Allocation
           </Button>
         </div>
       </div>

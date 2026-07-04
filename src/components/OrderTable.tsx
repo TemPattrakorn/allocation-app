@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { useAllocationStore } from '@/store/useAllocationStore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, PieChart, XCircle, ChevronDown, ChevronRight } from 'lucide-react';
+import { CheckCircle2, PieChart, XCircle, ChevronDown, ChevronRight} from 'lucide-react';
 import type { OrderPriority } from '@/types';
 import { AllocationDetailPanel } from './AllocationDetailPanel';
 
@@ -65,6 +64,7 @@ export function OrderTable() {
                     </TableCell>
                     <TableCell className="font-medium text-slate-900">{order.id}</TableCell>
                     
+                    
                     <TableCell>
                       <span className="font-mono text-xs font-semibold text-slate-600 bg-slate-100 px-2 py-1 rounded-md">
                         {order.itemId}
@@ -72,9 +72,11 @@ export function OrderTable() {
                     </TableCell>
 
                     <TableCell>
-                      <div className="flex flex-col gap-1 w-24">
-                        <span className="text-xs font-semibold">{order.customerId}</span>
-                        <Progress value={creditPercent} className="h-1.5" />
+                      <div className="flex flex-col w-32">
+                        <span className="text-xs font-semibold text-slate-900">{order.customerId}</span>
+                        <span className="text-[10px] font-mono text-slate-500 mt-0.5" title="Remaining / Total Limit">
+                          ฿{liveCredit.toLocaleString(undefined, { maximumFractionDigits: 0 })} / ฿{customer?.availableCredit.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </span>
                       </div>
                     </TableCell>
 

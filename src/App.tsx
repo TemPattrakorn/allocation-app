@@ -46,7 +46,7 @@ function App() {
         <header className="flex flex-col md:flex-row md:items-end justify-between gap-4">
           <div>
             <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Allocation Dashboard</h1>
-            <p className="text-slate-500 text-sm mt-1">Live multi-source fulfillment capacity and queue management.</p>
+            <p className="text-slate-500 text-sm mt-1">Multi-source fulfillment capacity and queue management.</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={resetAllocations}>Clear Allocations</Button>
