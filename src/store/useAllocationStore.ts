@@ -53,26 +53,18 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
       draftOrders = draftOrders.map((order) => {
         let remainingToFulfill = order.requestQuantity;
         const newAllocations: AllocationRecord[] = [];
-
-        // Find all sources that stock this item and match wildcard rules
         let validSources = trackingInventory.filter((inv) => {
-          if (inv.itemId !== order.itemId || inv.stock <= 0) return false;
-          const matchW = order.warehouseId === 'WH-000' || order.warehouseId === inv.warehouseId;
-          const matchS = order.supplierId === 'SP-000' || order.supplierId === inv.supplierId;
-          return matchW && matchS;
+          return inv.itemId === order.itemId && inv.stock > 0;
         });
 
-        // Get the specific multiplier for this order's type to calculate true final cost
         const multiplier = mockPriceTiers[order.type].multiplier;
 
-        // NEW SORTING STRATEGY: Highest stock first. If tied, cheapest final price first.
+        // SORTING STRATEGY: Highest stock first. If tied, cheapest final price first.
         validSources.sort((a, b) => {
-          // Rule 1: Prioritize highest stock
           if (b.stock !== a.stock) {
             return b.stock - a.stock; 
           }
           
-          // Rule 2: Tie-breaker - cheapest final price based on order type
           const ruleA = mockPricingRules.find(p => p.itemId === a.itemId && p.supplierId === a.supplierId);
           const ruleB = mockPricingRules.find(p => p.itemId === b.itemId && p.supplierId === b.supplierId);
           
@@ -85,7 +77,7 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
         const custIndex = trackingCustomers.findIndex((c) => c.id === order.customerId);
         if (custIndex === -1) return order;
 
-        // Greedy consumption loop (Automatically falls back to next source when one runs out)
+        // Greedy consumption loop
         for (const source of validSources) {
           if (remainingToFulfill <= 0) break; // Order fulfilled!
 

@@ -37,7 +37,7 @@ export const mockInventory: Inventory[] = [
 
 export const mockCustomers: Customer[] = [
   { id: 'CT-0001', availableCredit: 5000 },
-  { id: 'CT-0002', availableCredit: 30000 },
+  { id: 'CT-0002', availableCredit: 35000 },
   { id: 'CT-0003', availableCredit: 15000 }, // Mid-tier credit
   { id: 'CT-0004', availableCredit: 100000 }, // High credit (Whale) - Will hit stock limits first
   { id: 'CT-0005', availableCredit: 1500 }, // Low credit - Will hit credit limits before fulfilling 40 units of Item-2
