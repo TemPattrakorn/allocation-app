@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAllocationStore } from '@/store/useAllocationStore';
+import { useAllocationStore } from '@/store/allocationStore';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Save, X } from 'lucide-react';

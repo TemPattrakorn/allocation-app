@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useAllocationStore } from '@/store/useAllocationStore';
+import { useAllocationStore } from '@/store/allocationStore';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
