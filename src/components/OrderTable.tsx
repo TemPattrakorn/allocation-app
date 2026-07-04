@@ -9,160 +9,203 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/comp
 import { CheckCircle2, PieChart, XCircle, ChevronDown, ChevronRight, Save, X } from 'lucide-react';
 import { mockPricingRules, mockPriceTiers } from '@/data/mockData';
 import { bankersRound } from '@/utils/rounding';
-import type { OrderPriority } from '@/types';
+import type { OrderPriority, AllocationRecord, SubOrder } from '@/types';
 
-// --- SUB-COMPONENT: ZONE C (DETAIL PANEL) ---
-function AllocationDetailPanel({ order, onClose }: { order: any; onClose: () => void }) {
+// --- SUB-COMPONENT: ZONE C (SPLIT ALLOCATION DETAIL PANEL) ---
+function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: () => void }) {
   const { orders, customers, inventory, updateManualAllocation } = useAllocationStore();
-  
-  const [draftQty, setDraftQty] = useState<number | ''>(order.allocatedQuantity);
-  const [draftSource, setDraftSource] = useState(`${order.warehouseId}|${order.supplierId}`);
-  const [draftWH, draftSP] = draftSource.split('|');
 
-  const numericQty = draftQty === '' ? 0 : draftQty;
+  // Find all locations that physically stock this requested item
   const validSources = inventory.filter(i => i.itemId === order.itemId);
 
-  const selectedInventoryRecord = inventory.find(
-    i => i.itemId === order.itemId && i.warehouseId === draftWH && i.supplierId === draftSP
-  );
-  const maxStockAtSource = selectedInventoryRecord?.stock || 0;
+  // Initialize draft quantities mapping key ("WH|SP") to the currently allocated quantity
+  const [draftQuantities, setDraftQuantities] = useState<Record<string, number | ''>>(() => {
+    const initialMap: Record<string, number> = {};
+    order.allocations.forEach(a => {
+      initialMap[`${a.warehouseId}|${a.supplierId}`] = a.quantity;
+    });
+    return initialMap;
+  });
 
-  const stockUsedByOtherOrders = orders
-    .filter(o => o.itemId === order.itemId && o.warehouseId === draftWH && o.supplierId === draftSP && o.id !== order.id)
-    .reduce((sum, o) => sum + o.allocatedQuantity, 0);
+  // Helper to read state value safely as a numeric 0 behind the scenes
+  const getNumericQty = (key: string) => {
+    const val = draftQuantities[key];
+    return val === '' || val === undefined ? 0 : val;
+  };
 
-  const availableStockForThisOrder = maxStockAtSource - stockUsedByOtherOrders;
-  const isStockExceeded = numericQty > availableStockForThisOrder;
+  // --- 1. Total Allocated Across All Rows ---
+  const totalDraftAllocated = validSources.reduce((sum, src) => {
+    return sum + getNumericQty(`${src.warehouseId}|${src.supplierId}`);
+  }, 0);
 
-  const rule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === draftSP);
-  const basePrice = rule?.basePrice || 0;
-  const multiplier = mockPriceTiers[order.type as OrderPriority].multiplier;
-  
-  const unitPrice = bankersRound(basePrice * multiplier);
-  const draftLineTotal = bankersRound(unitPrice * numericQty);
+  // --- 2. Live Pricing & Live Stock Rules Engine ---
+  const multiplier = mockPriceTiers[order.type].multiplier;
+  let runningLineTotal = 0;
+  let sourceStockExceeded = false;
+  const stockExceededTracker: Record<string, boolean> = {};
+  const sourceMaxAvailTracker: Record<string, number> = {};
 
+  const sourceRowsData = validSources.map(src => {
+    const key = `${src.warehouseId}|${src.supplierId}`;
+    const draftQty = getNumericQty(key);
+
+    // Stock used by OTHER sub-orders matching this exact node
+    const othersUsed = orders
+      .filter(o => o.itemId === order.itemId && o.id !== order.id)
+      .reduce((sum, o) => {
+        const matchingAlloc = o.allocations.find(a => a.warehouseId === src.warehouseId && a.supplierId === src.supplierId);
+        return sum + (matchingAlloc ? matchingAlloc.quantity : 0);
+      }, 0);
+
+    const availableStockAtSource = src.stock - othersUsed;
+    sourceMaxAvailTracker[key] = availableStockAtSource;
+
+    if (draftQty > availableStockAtSource) {
+      sourceStockExceeded = true;
+      stockExceededTracker[key] = true;
+    }
+
+    // Calculate item specific pricing for this node
+    const rule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === src.supplierId);
+    const basePrice = rule?.basePrice || 0;
+    const unitPrice = bankersRound(basePrice * multiplier);
+    const rowTotal = bankersRound(unitPrice * draftQty);
+    
+    runningLineTotal += rowTotal;
+
+    return {
+      key,
+      warehouseId: src.warehouseId,
+      supplierId: src.supplierId,
+      unitPrice,
+      availableStockAtSource,
+      rowTotal
+    };
+  });
+
+  // --- 3. Live Credit Pool Matrix ---
   const customer = customers.find(c => c.id === order.customerId);
   const totalCreditLimit = customer?.availableCredit || 0;
 
   const spentByOtherOrders = orders
     .filter(o => o.customerId === order.customerId && o.id !== order.id)
-    .reduce((sum, o) => {
-      const oRule = mockPricingRules.find(p => p.itemId === o.itemId && p.supplierId === o.supplierId);
-      const oMultiplier = mockPriceTiers[o.type as OrderPriority]?.multiplier || 1;
-      const oPrice = bankersRound((oRule?.basePrice || 0) * oMultiplier);
-      return sum + (oPrice * o.allocatedQuantity);
+    .reduce((totalSpent, o) => {
+      const oMultiplier = mockPriceTiers[o.type].multiplier;
+      const orderCost = o.allocations.reduce((sum, a) => {
+        const rule = mockPricingRules.find(p => p.itemId === o.itemId && p.supplierId === a.supplierId);
+        if (!rule) return sum;
+        const price = bankersRound(rule.basePrice * oMultiplier);
+        return sum + (price * a.quantity);
+      }, 0);
+      return totalSpent + orderCost;
     }, 0);
 
-  const liveRemainingCredit = totalCreditLimit - spentByOtherOrders - draftLineTotal;
+  const liveRemainingCredit = totalCreditLimit - spentByOtherOrders - runningLineTotal;
   const isCreditExceeded = liveRemainingCredit < 0;
 
-  const isBlocked = isStockExceeded || isCreditExceeded || numericQty > order.requestQuantity;
+  // --- Hard Hard Boundary Guards ---
+  const isRequestedExceeded = totalDraftAllocated > order.requestQuantity;
+  const isBlocked = sourceStockExceeded || isCreditExceeded || isRequestedExceeded;
 
   const handleSave = () => {
     if (isBlocked) return;
-    updateManualAllocation(order.id, numericQty, draftWH, draftSP);
+
+    // Convert the local dictionary back to an array of explicit active records
+    const finalAllocations: AllocationRecord[] = Object.entries(draftQuantities)
+      .filter(([_, qty]) => qty !== '' && qty > 0)
+      .map(([key, qty]) => {
+        const [wh, sp] = key.split('|');
+        return { warehouseId: wh, supplierId: sp, quantity: qty as number };
+      });
+
+    updateManualAllocation(order.id, finalAllocations);
     onClose();
   };
 
   return (
-    <div className="p-4 bg-slate-100 border-x border-b shadow-inner grid grid-cols-1 md:grid-cols-3 gap-6 rounded-b-md">
-      <div className="space-y-4">
-        <div>
-          <label className="text-xs font-semibold text-slate-500 uppercase">Override Source (Live Stock)</label>
-          <select 
-            className="mt-1 flex h-9 w-full rounded-md border border-slate-200 bg-white px-3 py-1 text-sm shadow-sm"
-            value={draftSource}
-            onChange={(e) => setDraftSource(e.target.value)}
-          >
-            {validSources.map(src => {
-              const othersUsed = orders
-                .filter(o => o.itemId === src.itemId && o.warehouseId === src.warehouseId && o.supplierId === src.supplierId && o.id !== order.id)
-                .reduce((sum, o) => sum + o.allocatedQuantity, 0);
-              const avail = src.stock - othersUsed;
-              
-              return (
-                <option key={`${src.warehouseId}|${src.supplierId}`} value={`${src.warehouseId}|${src.supplierId}`}>
-                  {src.warehouseId} / {src.supplierId} — {avail} avail
-                </option>
-              );
-            })}
-          </select>
+    <div className="p-4 bg-slate-100 border-x border-b shadow-inner grid grid-cols-1 lg:grid-cols-12 gap-6 rounded-b-md">
+      
+      {/* Ledger Table: Columns 1 to 7 */}
+      <div className="lg:col-span-7 bg-white p-4 rounded border border-slate-200 space-y-3">
+        <div className="flex justify-between items-center border-b pb-2">
+          <p className="text-xs font-bold text-slate-500 uppercase">Fulfillment Split Ledger</p>
+          <span className={`text-xs font-semibold ${isRequestedExceeded ? 'text-red-600' : 'text-slate-600'}`}>
+            Total Allocated: {totalDraftAllocated} / {order.requestQuantity}
+          </span>
         </div>
-        <div>
-          <label className="text-xs font-semibold text-slate-500 uppercase flex justify-between">
-            Allocate Quantity
-            <span className="text-slate-400">Max Req: {order.requestQuantity}</span>
-          </label>
-          <Input 
-            type="number" 
-            min={0} max={order.requestQuantity}
-            value={draftQty}
-            onChange={(e) => {
-              const val = e.target.value;
-              setDraftQty(val === '' ? '' : parseInt(val, 10));
-            }}
-            className={`mt-1 bg-white font-mono ${isStockExceeded ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
-          />
-          {isStockExceeded && <p className="text-xs text-red-600 mt-1 font-semibold">Exceeds available stock ({availableStockForThisOrder} max)</p>}
-          {numericQty > order.requestQuantity && <p className="text-xs text-red-600 mt-1 font-semibold">Cannot exceed requested qty.</p>}
+        
+        <div className="space-y-3 max-h-[220px] overflow-y-auto pr-1">
+          {sourceRowsData.map(row => (
+            <div key={row.key} className="grid grid-cols-12 gap-2 items-center text-sm border-b pb-2 last:border-0 last:pb-0">
+              <div className="col-span-5 flex flex-col">
+                <span className="font-semibold text-slate-700">{row.warehouseId} / {row.supplierId}</span>
+                <span className="text-xs text-slate-400">Available: {row.availableStockAtSource} units</span>
+              </div>
+              <div className="col-span-3 text-right font-mono text-xs text-slate-500">
+                ฿{row.unitPrice.toFixed(2)} /u
+              </div>
+              <div className="col-span-2">
+                <Input 
+                  type="number"
+                  min={0}
+                  value={draftQuantities[row.key] ?? ''}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setDraftQuantities(prev => ({
+                      ...prev,
+                      [row.key]: val === '' ? '' : parseInt(val, 10)
+                    }));
+                  }}
+                  className={`h-8 text-center px-1 bg-white font-mono text-xs ${stockExceededTracker[row.key] ? 'border-red-500 focus-visible:ring-red-500' : ''}`}
+                />
+              </div>
+              <div className="col-span-2 text-right font-mono font-semibold text-xs text-slate-600">
+                ฿{row.rowTotal.toFixed(2)}
+              </div>
+            </div>
+          ))}
         </div>
+        {isRequestedExceeded && <p className="text-xs text-red-600 mt-1 font-semibold">Total allocations cannot exceed requested quantity ({order.requestQuantity}).</p>}
+        {sourceStockExceeded && <p className="text-xs text-red-600 mt-1 font-semibold">One or more sources exceed local physical capacity constraints.</p>}
       </div>
 
-      <div className="bg-white p-3 rounded border border-slate-200 space-y-2">
-        <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Price Breakdown</p>
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-500">Base Price:</span>
-          <span>฿{basePrice.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-500">Tier Adjust ({multiplier * 100}%):</span>
-          <span>{multiplier > 1 ? '+' : '-'} ฿{Math.abs(basePrice - (basePrice * multiplier)).toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm font-bold border-t pt-1">
-          <span>Final Unit Price:</span>
-          <span>฿{unitPrice.toFixed(2)}</span>
-        </div>
-        <div className="flex justify-between text-sm text-slate-500 mt-2">
-          <span>Order Total:</span>
-          <span className="font-mono">฿{draftLineTotal.toFixed(2)}</span>
-        </div>
-      </div>
-
-      <div className="flex flex-col justify-between">
+      {/* Credit Pool & Actions Viewports: Columns 8 to 12 */}
+      <div className="lg:col-span-5 flex flex-col justify-between space-y-4">
         <div className="bg-white p-3 rounded border border-slate-200 space-y-2">
-          <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Live Credit Validation</p>
+          <p className="text-xs font-semibold text-slate-500 uppercase border-b pb-1">Live Financial Exposure</p>
           <div className="flex justify-between text-sm">
             <span className="text-slate-500">Total Credit Limit:</span>
-            <span>฿{totalCreditLimit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span>฿{totalCreditLimit.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Used by Other Orders:</span>
-            <span className="text-slate-700">- ฿{spentByOtherOrders.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-slate-500">Other Orders Cost:</span>
+            <span className="text-slate-700">- ฿{spentByOtherOrders.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between text-sm">
-            <span className="text-slate-500">Used by This Order:</span>
-            <span className="text-red-500 font-bold">- ฿{draftLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+            <span className="text-slate-500">This Order Ledger Total:</span>
+            <span className="text-red-500 font-bold">- ฿{runningLineTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
           </div>
           <div className="flex justify-between text-sm font-bold border-t pt-1">
-            <span>Remaining Available:</span>
+            <span>Remaining Runway:</span>
             <span className={isCreditExceeded ? 'text-red-600' : 'text-emerald-600'}>
-              ฿{liveRemainingCredit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              ฿{liveRemainingCredit.toLocaleString(undefined, { minimumFractionDigits: 2 })}
             </span>
           </div>
         </div>
         
-        <div className="flex justify-end gap-2 mt-4">
-          <Button variant="outline" onClick={onClose}><X className="w-4 h-4 mr-1"/> Cancel</Button>
-          <Button onClick={handleSave} disabled={isBlocked} className="bg-slate-900 text-white">
-            <Save className="w-4 h-4 mr-1"/> Save Changes
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" size="sm" onClick={onClose}><X className="w-4 h-4 mr-1"/> Cancel</Button>
+          <Button size="sm" onClick={handleSave} disabled={isBlocked} className="bg-slate-900 text-white">
+            <Save className="w-4 h-4 mr-1"/> Save Splits
           </Button>
         </div>
       </div>
+
     </div>
   );
 }
 
-// --- MAIN TABLE ---
+// --- MAIN QUEUE CONTAINER ---
 export function OrderTable() {
   const { orders, customers, getLiveRemainingCredit } = useAllocationStore();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
@@ -190,10 +233,9 @@ export function OrderTable() {
               <TableHead>Customer</TableHead>
               <TableHead>Priority</TableHead>
               <TableHead>Date</TableHead>
-              <TableHead>Source (WH/SP)</TableHead>
-              <TableHead className="text-right">Unit Price</TableHead>
+              <TableHead>Assigned Matrix</TableHead>
               <TableHead className="text-right">Req.</TableHead>
-              <TableHead className="text-right">Allocated</TableHead>
+              <TableHead className="text-right">Total Allocated</TableHead>
               <TableHead className="text-center">Status</TableHead>
             </TableRow>
           </TableHeader>
@@ -201,15 +243,14 @@ export function OrderTable() {
             {orders.map((order) => {
               const liveCredit = getLiveRemainingCredit(order.customerId);
               const customer = customers.find(c => c.id === order.customerId);
-              
-              const rule = mockPricingRules.find(p => p.itemId === order.itemId && p.supplierId === order.supplierId);
-              const multiplier = mockPriceTiers[order.type].multiplier;
-              const unitPrice = rule ? bankersRound(rule.basePrice * multiplier) : 0;
               const creditPercent = customer ? Math.max(0, (liveCredit / customer.availableCredit) * 100) : 0;
               
-              const isFull = order.allocatedQuantity === order.requestQuantity;
-              const isPartial = order.allocatedQuantity > 0 && order.allocatedQuantity < order.requestQuantity;
-              const isBlocked = order.allocatedQuantity === 0;
+              // Count total units parsed into the allocations list
+              const totalAllocatedUnits = order.allocations.reduce((sum, a) => sum + a.quantity, 0);
+
+              const isFull = totalAllocatedUnits === order.requestQuantity;
+              const isPartial = totalAllocatedUnits > 0 && totalAllocatedUnits < order.requestQuantity;
+              const isBlocked = totalAllocatedUnits === 0;
 
               return (
                 <React.Fragment key={order.id}>
@@ -231,10 +272,24 @@ export function OrderTable() {
 
                     <TableCell><Badge variant={getPriorityBadge(order.type)}>{order.type}</Badge></TableCell>
                     <TableCell className="text-xs text-slate-500">{new Date(order.createDate).toLocaleDateString()}</TableCell>
-                    <TableCell className="text-slate-500 font-mono text-xs whitespace-nowrap">{order.warehouseId} / {order.supplierId}</TableCell>
-                    <TableCell className="text-right font-mono text-xs">฿{unitPrice.toFixed(2)}</TableCell>
+                    
+                    {/* Render a quick compact list of the locations fulfilling this specific order */}
+                    <TableCell className="text-xs text-slate-500 max-w-[200px] truncate">
+                      {isBlocked ? (
+                        <span className="text-slate-400 italic">None Assigned</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {order.allocations.map((a, i) => (
+                            <span key={i} className="bg-slate-100 text-slate-700 px-1.5 py-0.5 rounded font-mono text-[11px]">
+                              {a.warehouseId}({a.quantity})
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </TableCell>
+
                     <TableCell className="text-right font-medium">{order.requestQuantity}</TableCell>
-                    <TableCell className="text-right font-mono font-bold text-slate-700">{order.allocatedQuantity}</TableCell>
+                    <TableCell className="text-right font-mono font-bold text-slate-700">{totalAllocatedUnits}</TableCell>
 
                     <TableCell className="text-center">
                       {isFull && <Badge className="bg-emerald-100 text-emerald-800 border-none shadow-none"><CheckCircle2 className="w-3 h-3 mr-1" /> Full</Badge>}
@@ -247,7 +302,7 @@ export function OrderTable() {
                             </Badge>
                           </TooltipTrigger>
                           <TooltipContent side="top" sideOffset={5} className="z-[9999] bg-slate-900 text-white">
-                            <p>Partially fulfilled due to stock or credit limits.</p>
+                            <p>Split fulfilled across multiple physical channels.</p>
                           </TooltipContent>
                         </Tooltip>
                       )}
@@ -269,7 +324,7 @@ export function OrderTable() {
 
                   {expandedRow === order.id && (
                     <TableRow className="hover:bg-transparent border-none">
-                      <TableCell colSpan={10} className="p-0 border-none">
+                      <TableCell colSpan={9} className="p-0 border-none">
                         <AllocationDetailPanel order={order} onClose={() => setExpandedRow(null)} />
                       </TableCell>
                     </TableRow>

@@ -1,17 +1,26 @@
 export type OrderPriority = 'EMERGENCY' | 'OVER_DUE' | 'DAILY';
 
+// NEW: This interface tracks split fulfillment sources
+export interface AllocationRecord {
+  warehouseId: string;
+  supplierId: string;
+  quantity: number;
+}
+
 export interface SubOrder {
-  id: string; // e.g., ORDER-0001-001
-  orderId: string; // e.g., ORDER-0001
+  id: string;
+  orderId: string;
   itemId: string;
-  warehouseId: string; // e.g., WH-001, or WH-000 for wildcard
-  supplierId: string; // e.g., SP-001, or SP-000 for wildcard
+  warehouseId: string; // The originally requested warehouse (or WH-000 wildcard)
+  supplierId: string;  // The originally requested supplier (or SP-000 wildcard)
   requestQuantity: number;
   type: OrderPriority;
-  createDate: string; // ISO string preferred for sorting
+  createDate: string;
   customerId: string;
   remark?: string;
-  allocatedQuantity: number; // For our UI state
+  
+  // NEW: Replaces the flat 'allocatedQuantity' number
+  allocations: AllocationRecord[]; 
 }
 
 export interface Inventory {
@@ -34,5 +43,5 @@ export interface PricingRule {
 
 export interface PriceTier {
   tier: OrderPriority;
-  multiplier: number; // e.g., 1.25 for 125%
+  multiplier: number;
 }
