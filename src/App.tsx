@@ -51,7 +51,7 @@ function App() {
           <div className="flex gap-2">
             <Button variant="outline" onClick={resetAllocations}>Clear Allocations</Button>
             <Button onClick={runAutoAssign} className="bg-slate-900 text-white hover:bg-slate-800 shadow-md">
-              Auto-Allocation
+              Auto Allocation
             </Button>
           </div>
         </header>

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAllocationStore } from '@/store/allocationStore';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -26,6 +26,14 @@ export function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onC
     });
     return initialMap;
   });
+
+  useEffect(() => {
+    const updatedMap: Record<string, number> = {};
+    order.allocations.forEach(a => {
+      updatedMap[`${a.warehouseId}|${a.supplierId}`] = a.quantity;
+    });
+    setDraftQuantities(updatedMap);
+  }, [order.allocations]);
 
   const getNumericQty = (key: string) => {
     const val = draftQuantities[key];
