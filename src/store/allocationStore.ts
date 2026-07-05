@@ -30,14 +30,12 @@ export const useAllocationStore = create<AllocationState>((set, get) => ({
   resetAllocations: () =>
     set((state) => ({
       orders: state.orders.map(order => ({ ...order, allocations: [] as AllocationRecord[] })),
-      inventory: mockInventory,
-      customers: mockCustomers,
     })),
 
   runAutoAssign: () =>
-    set(() => {
-      const draftOrders = mockOrders.map((o) => ({ ...o, allocations: [] as AllocationRecord[] }));
-      return { orders: computeAutoAssignment(draftOrders, mockInventory, mockCustomers) };
+    set((state) => {
+      const draftOrders = state.orders.map((o) => ({ ...o, allocations: [] as AllocationRecord[] }));
+      return { orders: computeAutoAssignment(draftOrders, state.inventory, state.customers) };
     }),
 
   getLiveRemainingStock: (itemId, warehouseId, supplierId) => {
