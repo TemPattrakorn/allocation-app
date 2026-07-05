@@ -46,6 +46,7 @@ export const mockPricingRules: PricingRule[] = [
   { itemId: 'Item-4', supplierId: 'SP-001', basePrice: 320.00 },
   { itemId: 'Item-4', supplierId: 'SP-003', basePrice: 315.00 },
   { itemId: 'Item-4', supplierId: 'SP-004', basePrice: 330.00 },
+  { itemId: 'Item-4', supplierId: 'SP-005', basePrice: 300.00 },
   
   // Item 5 (Premium)
   { itemId: 'Item-5', supplierId: 'SP-003', basePrice: 500.00 },
