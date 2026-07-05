@@ -26,7 +26,12 @@ export function computeAutoAssignment(
     let remainingToFulfill = order.requestQuantity;
     const newAllocations: AllocationRecord[] = [];
     let validSources = trackingInventory.filter((inv) => {
-      return inv.itemId === order.itemId && inv.stock > 0;
+      if (inv.itemId !== order.itemId || inv.stock <= 0) return false;
+  
+      const matchW = order.warehouseId === 'WH-000' || order.warehouseId === inv.warehouseId;
+      const matchS = order.supplierId === 'SP-000' || order.supplierId === inv.supplierId;
+  
+      return matchW && matchS;
     });
 
     const multiplier = mockPriceTiers[order.type].multiplier;

@@ -81,8 +81,9 @@ export const mockInventory: Inventory[] = [
 
   // Item 4 Spread
   { warehouseId: 'WH-001', supplierId: 'SP-001', itemId: 'Item-4', stock: 90 },
-  { warehouseId: 'WH-004', supplierId: 'SP-003', itemId: 'Item-4', stock: 210 },
+  { warehouseId: 'WH-004', supplierId: 'SP-003', itemId: 'Item-4', stock: 110 },
   { warehouseId: 'WH-005', supplierId: 'SP-004', itemId: 'Item-4', stock: 60 },
+  { warehouseId: 'WH-004', supplierId: 'SP-005', itemId: 'Item-4', stock: 20 },
 
   // Item 5 Spread
   { warehouseId: 'WH-002', supplierId: 'SP-003', itemId: 'Item-5', stock: 40 },

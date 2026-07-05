@@ -10,7 +10,14 @@ import type { AllocationRecord, SubOrder } from '@/types';
 export function AllocationDetailPanel({ order, onClose }: { order: SubOrder; onClose: () => void }) {
   const { orders, customers, inventory, updateManualAllocation } = useAllocationStore();
 
-  const validSources = inventory.filter(i => i.itemId === order.itemId);
+  const validSources = inventory.filter(i => {
+    if (i.itemId !== order.itemId) return false;
+  
+    const matchW = order.warehouseId === 'WH-000' || order.warehouseId === i.warehouseId;
+    const matchS = order.supplierId === 'SP-000' || order.supplierId === i.supplierId;
+  
+    return matchW && matchS;
+  });
 
   const [draftQuantities, setDraftQuantities] = useState<Record<string, number | ''>>(() => {
     const initialMap: Record<string, number> = {};
